@@ -25,6 +25,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f47f0299-ce18-4df2-9fb4-660dc7e9f9ab"
+      }
+    },
+    "owner": "glassofw1ne"
   }
 }
