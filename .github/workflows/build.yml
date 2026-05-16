@@ -10,9 +10,9 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     env:
-      # Inject secrets at job level; individual steps will validate/fallback as needed
-      EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      # WARNING: Token hard-coded by user confirmation. This stores the secret in repository history.
+      EAS_TOKEN: wWDcXk9oPlze0DvFAzB8zXVzlG6Njn32VU2Zyma3
+      EXPO_TOKEN: wWDcXk9oPlze0DvFAzB8zXVzlG6Njn32VU2Zyma3
 
     steps:
       - name: Checkout
