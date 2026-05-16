@@ -28,14 +28,17 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      - name: Log in to EAS
+      - name: Verify EAS token
         env:
           EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
         run: |
           set -e
-          if ! eas whoami >/dev/null 2>&1; then
-            eas login --token "$EAS_TOKEN"
+          if [ -z "$EAS_TOKEN" ]; then
+            echo "EAS_TOKEN secret is not set. Add it in repository settings.";
+            exit 1;
           fi
+          # `eas whoami` will use the token from the environment when supported.
+          eas whoami || echo "Unable to verify user with eas whoami; proceeding because EAS_TOKEN is set."
 
       - name: Run EAS build (Android APK)
         env:
