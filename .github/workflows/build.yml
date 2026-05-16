@@ -1,0 +1,91 @@
+name: Build Android APK and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    env:
+      # Inject secrets at job level; individual steps will validate/fallback as needed
+      EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install EAS CLI (latest)
+        run: npm install --global eas-cli@latest
+
+      - name: Verify EAS/Expo token
+        run: |
+          set -euo pipefail
+          # prefer EAS_TOKEN, otherwise use EXPO_TOKEN as a fallback
+          if [ -z "${EAS_TOKEN-}" ] && [ -n "${EXPO_TOKEN-}" ]; then
+            export EAS_TOKEN="$EXPO_TOKEN"
+            echo "Using EXPO_TOKEN as EAS_TOKEN fallback."
+          fi
+          if [ -z "${EAS_TOKEN-}" ]; then
+            echo "EAS_TOKEN or EXPO_TOKEN secret is not set. Add one in repository settings.";
+            exit 1;
+          fi
+          # Verify identity (non-fatal if command fails to avoid blocking in some CI configurations)
+          if ! eas whoami >/dev/null 2>&1; then
+            echo "Warning: 'eas whoami' failed; token is set, continuing..."
+          else
+            echo "EAS token verified."
+          fi
+
+      - name: Run EAS build (Android APK)
+        run: |
+          set -euo pipefail
+          # Ensure EAS_TOKEN is available in this shell (fallback to EXPO_TOKEN if needed)
+          if [ -z "${EAS_TOKEN-}" ] && [ -n "${EXPO_TOKEN-}" ]; then
+            export EAS_TOKEN="$EXPO_TOKEN"
+            echo "Using EXPO_TOKEN as EAS_TOKEN fallback."
+          fi
+          echo "Starting EAS build (android, production)..."
+          # Wait for build to finish and output JSON to parse artifact URL
+          eas build --platform android --profile production --non-interactive --wait --json > build.json
+          cat build.json
+          # Try to extract artifact URL from known fields
+          ARTIFACT_URL=$(jq -r 'if .artifacts then (.artifacts[]? | .url // .uri // .artifact_url // .archiveUrl) elif .uri then .uri elif .artifactUrl then .artifactUrl else empty end' build.json | head -n1)
+          if [ -z "$ARTIFACT_URL" ]; then
+            echo "No artifact URL found in build.json"; exit 1;
+          fi
+          echo "Downloading artifact from: $ARTIFACT_URL"
+          curl --retry 5 --retry-delay 5 -L "$ARTIFACT_URL" -o app.apk
+          echo "Downloaded app.apk (size = $(stat -c%s app.apk) bytes)"
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: apk-${{ github.run_id }}
+          release_name: APK build ${{ github.run_id }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./app.apk
+          asset_name: WinesECG.apk
+          asset_content_type: application/vnd.android.package-archive
